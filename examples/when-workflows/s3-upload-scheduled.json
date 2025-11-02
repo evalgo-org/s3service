@@ -1,0 +1,38 @@
+{
+  "@context": "https://schema.org",
+  "@type": "ScheduledAction",
+  "identifier": "s3-backup-upload",
+  "name": "S3: Daily Backup Upload",
+  "description": "Upload daily backup files to Hetzner S3 storage",
+  "object": {
+    "@type": "CreateAction",
+    "identifier": "upload-daily-backup",
+    "object": {
+      "@type": "MediaObject",
+      "identifier": "backups/daily-backup.tar.gz",
+      "contentUrl": "/var/backups/daily-backup.tar.gz",
+      "encodingFormat": "application/gzip"
+    },
+    "target": {
+      "@type": "DataCatalog",
+      "identifier": "backup-storage",
+      "url": "https://fsn1.your-objectstorage.com",
+      "additionalProperty": {
+        "region": "fsn1",
+        "accessKey": "${HETZNER_S3_ACCESS_KEY}",
+        "secretKey": "${HETZNER_S3_SECRET_KEY}"
+      }
+    },
+    "targetUrl": "backups/daily-backup.tar.gz"
+  },
+  "schedule": {
+    "@type": "Schedule",
+    "repeatFrequency": "PT24H",
+    "description": "Upload backup daily at midnight"
+  },
+  "additionalProperty": {
+    "command": "/home/opunix/fetcher/fetcher semantic /home/opunix/s3service/examples/workflows/01-upload-file.json",
+    "timeout": 300,
+    "retry": 3
+  }
+}

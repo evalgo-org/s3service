@@ -1,0 +1,23 @@
+{
+  "@context": "https://schema.org",
+  "@type": "DeleteAction",
+  "identifier": "delete-temp-file",
+  "name": "Delete Temporary File from S3",
+  "description": "Delete temporary processing file from Hetzner S3 bucket",
+  "object": {
+    "@type": "MediaObject",
+    "identifier": "temp/processing.tmp",
+    "name": "processing.tmp"
+  },
+  "target": {
+    "@type": "DataCatalog",
+    "identifier": "workflow-storage",
+    "name": "Workflow Storage Bucket",
+    "url": "https://fsn1.your-objectstorage.com",
+    "additionalProperty": {
+      "region": "fsn1",
+      "accessKey": "${HETZNER_S3_ACCESS_KEY}",
+      "secretKey": "${HETZNER_S3_SECRET_KEY}"
+    }
+  }
+}

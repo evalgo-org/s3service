@@ -1,0 +1,19 @@
+{
+  "@context": "https://schema.org",
+  "@type": "SearchAction",
+  "identifier": "list-workflow-files",
+  "name": "List Workflow Files in S3",
+  "description": "List all workflow files with specific prefix in Hetzner S3 bucket",
+  "query": "workflows/",
+  "target": {
+    "@type": "DataCatalog",
+    "identifier": "workflow-storage",
+    "name": "Workflow Storage Bucket",
+    "url": "https://fsn1.your-objectstorage.com",
+    "additionalProperty": {
+      "region": "fsn1",
+      "accessKey": "${HETZNER_S3_ACCESS_KEY}",
+      "secretKey": "${HETZNER_S3_SECRET_KEY}"
+    }
+  }
+}

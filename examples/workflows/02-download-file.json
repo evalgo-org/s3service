@@ -1,0 +1,25 @@
+{
+  "@context": "https://schema.org",
+  "@type": "DownloadAction",
+  "identifier": "download-workflow-result",
+  "name": "Download Workflow Result from S3",
+  "description": "Download processed result file from Hetzner S3 bucket",
+  "object": {
+    "@type": "MediaObject",
+    "identifier": "results/output.xml",
+    "name": "output.xml",
+    "encodingFormat": "application/xml",
+    "contentUrl": "/tmp/downloaded-output.xml"
+  },
+  "target": {
+    "@type": "DataCatalog",
+    "identifier": "workflow-storage",
+    "name": "Workflow Storage Bucket",
+    "url": "https://fsn1.your-objectstorage.com",
+    "additionalProperty": {
+      "region": "fsn1",
+      "accessKey": "${HETZNER_S3_ACCESS_KEY}",
+      "secretKey": "${HETZNER_S3_SECRET_KEY}"
+    }
+  }
+}

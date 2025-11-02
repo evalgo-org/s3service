@@ -1,0 +1,26 @@
+{
+  "@context": "https://schema.org",
+  "@type": "CreateAction",
+  "identifier": "upload-workflow-data",
+  "name": "Upload Workflow Data File to S3",
+  "description": "Upload a data file to Hetzner S3 bucket for workflow processing",
+  "object": {
+    "@type": "MediaObject",
+    "identifier": "workflows/data.json",
+    "name": "data.json",
+    "contentUrl": "/tmp/workflow-data.json",
+    "encodingFormat": "application/json"
+  },
+  "target": {
+    "@type": "DataCatalog",
+    "identifier": "workflow-storage",
+    "name": "Workflow Storage Bucket",
+    "url": "https://fsn1.your-objectstorage.com",
+    "additionalProperty": {
+      "region": "fsn1",
+      "accessKey": "${HETZNER_S3_ACCESS_KEY}",
+      "secretKey": "${HETZNER_S3_SECRET_KEY}"
+    }
+  },
+  "targetUrl": "workflows/data.json"
+}
