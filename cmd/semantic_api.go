@@ -26,53 +26,59 @@ func handleSemanticAction(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Failed to read request body: %v", err))
 	}
 
-	// Use EVE library's ParseS3Action for routing and parsing
-	action, err := semantic.ParseS3Action(body)
+	// Parse as SemanticAction
+	action, err := semantic.ParseSemanticAction(body)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Failed to parse action: %v", err))
 	}
 
-	// Route to appropriate handler based on type
-	switch v := action.(type) {
-	case *semantic.S3UploadAction:
-		return executeUploadAction(c, v)
-	case *semantic.S3DownloadAction:
-		return executeDownloadAction(c, v)
-	case *semantic.S3DeleteAction:
-		return executeDeleteAction(c, v)
-	case *semantic.S3ListAction:
-		return executeListAction(c, v)
+	// Route to appropriate handler based on @type
+	switch action.Type {
+	case "CreateAction":
+		return executeUploadAction(c, action)
+	case "DownloadAction":
+		return executeDownloadAction(c, action)
+	case "DeleteAction":
+		return executeDeleteAction(c, action)
+	case "SearchAction":
+		return executeListAction(c, action)
 	default:
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Unsupported action type: %T", v))
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Unsupported action type: %s", action.Type))
 	}
 }
 
 // executeUploadAction handles file upload to S3 operations
-func executeUploadAction(c echo.Context, action *semantic.S3UploadAction) error {
+func executeUploadAction(c echo.Context, action *semantic.SemanticAction) error {
 	ctx := context.Background()
-	action.StartTime = time.Now().Format(time.RFC3339)
+
+	// Extract S3 bucket and object using helpers
+	bucket, err := semantic.GetS3BucketFromAction(action)
+	if err != nil {
+		return semantic.ReturnActionError(c, action, "Failed to extract S3 bucket", err)
+	}
+
+	object, err := semantic.GetS3ObjectFromAction(action)
+	if err != nil {
+		return semantic.ReturnActionError(c, action, "Failed to extract S3 object", err)
+	}
 
 	// Extract S3 credentials
-	url, region, accessKey, secretKey, bucketName, err := semantic.ExtractS3Credentials(action.Target)
+	url, region, accessKey, secretKey, bucketName, err := semantic.ExtractS3Credentials(bucket)
 	_ = region // May be used for multi-region support
 	if err != nil {
-		return returnError(c, action, fmt.Sprintf("Failed to extract S3 credentials: %v", err))
+		return semantic.ReturnActionError(c, action, "Failed to extract S3 credentials", err)
 	}
 
 	// Get file path from object
-	if action.Object == nil {
-		return returnError(c, action, "Object is required")
-	}
-
-	filePath := action.Object.ContentUrl
+	filePath := object.ContentUrl
 	if filePath == "" {
-		return returnError(c, action, "Object contentUrl (file path) is required")
+		return semantic.ReturnActionError(c, action, "Object contentUrl (file path) is required", nil)
 	}
 
 	// Determine S3 key
-	s3Key := action.TargetUrl
+	s3Key := semantic.GetS3TargetUrlFromAction(action)
 	if s3Key == "" {
-		s3Key = action.Object.Identifier
+		s3Key = object.Identifier
 	}
 	if s3Key == "" {
 		s3Key = filepath.Base(filePath)
@@ -80,55 +86,61 @@ func executeUploadAction(c echo.Context, action *semantic.S3UploadAction) error 
 
 	// Use EVE's HetznerUploadFile function
 	if err := storage.HetznerUploadFile(ctx, url, accessKey, secretKey, bucketName, filePath, s3Key); err != nil {
-		return returnError(c, action, fmt.Sprintf("Failed to upload file: %v", err))
+		return semantic.ReturnActionError(c, action, "Failed to upload file", err)
 	}
 
 	// Get file info for result
 	fileInfo, err := os.Stat(filePath)
 	if err == nil {
-		action.Result = &semantic.S3Object{
+		result := &semantic.S3Object{
 			Type:           "MediaObject",
 			Identifier:     s3Key,
 			Name:           filepath.Base(filePath),
 			ContentUrl:     fmt.Sprintf("s3://%s/%s", bucketName, s3Key),
 			ContentSize:    fileInfo.Size(),
-			EncodingFormat: action.Object.EncodingFormat,
+			EncodingFormat: object.EncodingFormat,
 			UploadDate:     time.Now().Format(time.RFC3339),
 		}
+		action.Properties["result"] = result
 	}
 
-	action.ActionStatus = "CompletedActionStatus"
-	action.EndTime = time.Now().Format(time.RFC3339)
+	semantic.SetSuccessOnAction(action)
 	return c.JSON(http.StatusOK, action)
 }
 
 // executeDownloadAction handles file download from S3 operations
-func executeDownloadAction(c echo.Context, action *semantic.S3DownloadAction) error {
+func executeDownloadAction(c echo.Context, action *semantic.SemanticAction) error {
 	ctx := context.Background()
-	action.StartTime = time.Now().Format(time.RFC3339)
+
+	// Extract S3 bucket and object using helpers
+	bucket, err := semantic.GetS3BucketFromAction(action)
+	if err != nil {
+		return semantic.ReturnActionError(c, action, "Failed to extract S3 bucket", err)
+	}
+
+	object, err := semantic.GetS3ObjectFromAction(action)
+	if err != nil {
+		return semantic.ReturnActionError(c, action, "Failed to extract S3 object", err)
+	}
 
 	// Extract S3 credentials
-	url, region, accessKey, secretKey, bucketName, err := semantic.ExtractS3Credentials(action.Target)
+	url, region, accessKey, secretKey, bucketName, err := semantic.ExtractS3Credentials(bucket)
 	_ = region // May be used for multi-region support
 	if err != nil {
-		return returnError(c, action, fmt.Sprintf("Failed to extract S3 credentials: %v", err))
+		return semantic.ReturnActionError(c, action, "Failed to extract S3 credentials", err)
 	}
 
 	// Get S3 key from object
-	if action.Object == nil {
-		return returnError(c, action, "Object is required")
-	}
-
-	s3Key := action.Object.Identifier
+	s3Key := object.Identifier
 	if s3Key == "" {
-		s3Key = action.Object.Name
+		s3Key = object.Name
 	}
 	if s3Key == "" {
-		return returnError(c, action, "Object identifier (S3 key) is required")
+		return semantic.ReturnActionError(c, action, "Object identifier (S3 key) is required", nil)
 	}
 
 	// Determine local download path
-	downloadPath := action.Object.ContentUrl
+	downloadPath := object.ContentUrl
 	if downloadPath == "" {
 		downloadPath = filepath.Join("/tmp", filepath.Base(s3Key))
 	}
@@ -136,7 +148,7 @@ func executeDownloadAction(c echo.Context, action *semantic.S3DownloadAction) er
 	// Create S3 client
 	client, err := createS3Client(ctx, url, region, accessKey, secretKey)
 	if err != nil {
-		return returnError(c, action, fmt.Sprintf("Failed to create S3 client: %v", err))
+		return semantic.ReturnActionError(c, action, "Failed to create S3 client", err)
 	}
 
 	// Download file
@@ -145,66 +157,72 @@ func executeDownloadAction(c echo.Context, action *semantic.S3DownloadAction) er
 		Key:    aws.String(s3Key),
 	})
 	if err != nil {
-		return returnError(c, action, fmt.Sprintf("Failed to download file: %v", err))
+		return semantic.ReturnActionError(c, action, "Failed to download file", err)
 	}
 	defer func() { _ = result.Body.Close() }()
 
 	// Write to local file
 	outFile, err := os.Create(downloadPath)
 	if err != nil {
-		return returnError(c, action, fmt.Sprintf("Failed to create local file: %v", err))
+		return semantic.ReturnActionError(c, action, "Failed to create local file", err)
 	}
 	defer func() { _ = outFile.Close() }()
 
 	size, err := io.Copy(outFile, result.Body)
 	if err != nil {
-		return returnError(c, action, fmt.Sprintf("Failed to write file: %v", err))
+		return semantic.ReturnActionError(c, action, "Failed to write file", err)
 	}
 
 	// Set result
-	action.Result = &semantic.S3Object{
+	downloadedObject := &semantic.S3Object{
 		Type:           "MediaObject",
 		Identifier:     s3Key,
 		Name:           filepath.Base(s3Key),
 		ContentUrl:     downloadPath,
 		ContentSize:    size,
-		EncodingFormat: action.Object.EncodingFormat,
+		EncodingFormat: object.EncodingFormat,
 	}
+	action.Properties["result"] = downloadedObject
 
-	action.ActionStatus = "CompletedActionStatus"
-	action.EndTime = time.Now().Format(time.RFC3339)
+	semantic.SetSuccessOnAction(action)
 	return c.JSON(http.StatusOK, action)
 }
 
 // executeDeleteAction handles file deletion from S3 operations
-func executeDeleteAction(c echo.Context, action *semantic.S3DeleteAction) error {
+func executeDeleteAction(c echo.Context, action *semantic.SemanticAction) error {
 	ctx := context.Background()
-	action.StartTime = time.Now().Format(time.RFC3339)
+
+	// Extract S3 bucket and object using helpers
+	bucket, err := semantic.GetS3BucketFromAction(action)
+	if err != nil {
+		return semantic.ReturnActionError(c, action, "Failed to extract S3 bucket", err)
+	}
+
+	object, err := semantic.GetS3ObjectFromAction(action)
+	if err != nil {
+		return semantic.ReturnActionError(c, action, "Failed to extract S3 object", err)
+	}
 
 	// Extract S3 credentials
-	url, region, accessKey, secretKey, bucketName, err := semantic.ExtractS3Credentials(action.Target)
+	url, region, accessKey, secretKey, bucketName, err := semantic.ExtractS3Credentials(bucket)
 	_ = region // May be used for multi-region support
 	if err != nil {
-		return returnError(c, action, fmt.Sprintf("Failed to extract S3 credentials: %v", err))
+		return semantic.ReturnActionError(c, action, "Failed to extract S3 credentials", err)
 	}
 
 	// Get S3 key from object
-	if action.Object == nil {
-		return returnError(c, action, "Object is required")
-	}
-
-	s3Key := action.Object.Identifier
+	s3Key := object.Identifier
 	if s3Key == "" {
-		s3Key = action.Object.Name
+		s3Key = object.Name
 	}
 	if s3Key == "" {
-		return returnError(c, action, "Object identifier (S3 key) is required")
+		return semantic.ReturnActionError(c, action, "Object identifier (S3 key) is required", nil)
 	}
 
 	// Create S3 client
 	client, err := createS3Client(ctx, url, region, accessKey, secretKey)
 	if err != nil {
-		return returnError(c, action, fmt.Sprintf("Failed to create S3 client: %v", err))
+		return semantic.ReturnActionError(c, action, "Failed to create S3 client", err)
 	}
 
 	// Delete object
@@ -213,43 +231,47 @@ func executeDeleteAction(c echo.Context, action *semantic.S3DeleteAction) error 
 		Key:    aws.String(s3Key),
 	})
 	if err != nil {
-		return returnError(c, action, fmt.Sprintf("Failed to delete file: %v", err))
+		return semantic.ReturnActionError(c, action, "Failed to delete file", err)
 	}
 
-	action.ActionStatus = "CompletedActionStatus"
-	action.EndTime = time.Now().Format(time.RFC3339)
+	semantic.SetSuccessOnAction(action)
 	return c.JSON(http.StatusOK, action)
 }
 
 // executeListAction handles listing objects in S3 bucket
-func executeListAction(c echo.Context, action *semantic.S3ListAction) error {
+func executeListAction(c echo.Context, action *semantic.SemanticAction) error {
 	ctx := context.Background()
-	action.StartTime = time.Now().Format(time.RFC3339)
+
+	// Extract S3 bucket using helper
+	bucket, err := semantic.GetS3BucketFromAction(action)
+	if err != nil {
+		return semantic.ReturnActionError(c, action, "Failed to extract S3 bucket", err)
+	}
 
 	// Extract S3 credentials
-	url, region, accessKey, secretKey, bucketName, err := semantic.ExtractS3Credentials(action.Target)
+	url, region, accessKey, secretKey, bucketName, err := semantic.ExtractS3Credentials(bucket)
 	_ = region // May be used for multi-region support
 	if err != nil {
-		return returnError(c, action, fmt.Sprintf("Failed to extract S3 credentials: %v", err))
+		return semantic.ReturnActionError(c, action, "Failed to extract S3 credentials", err)
 	}
 
 	// Create S3 client
 	client, err := createS3Client(ctx, url, region, accessKey, secretKey)
 	if err != nil {
-		return returnError(c, action, fmt.Sprintf("Failed to create S3 client: %v", err))
+		return semantic.ReturnActionError(c, action, "Failed to create S3 client", err)
 	}
 
-	// List objects with optional prefix
+	// List objects with optional prefix from query
 	input := &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucketName),
 	}
-	if action.Query != "" {
-		input.Prefix = aws.String(action.Query)
+	if query, ok := action.Properties["query"].(string); ok && query != "" {
+		input.Prefix = aws.String(query)
 	}
 
 	result, err := client.ListObjectsV2(ctx, input)
 	if err != nil {
-		return returnError(c, action, fmt.Sprintf("Failed to list objects: %v", err))
+		return semantic.ReturnActionError(c, action, "Failed to list objects", err)
 	}
 
 	// Build result list
@@ -265,9 +287,9 @@ func executeListAction(c echo.Context, action *semantic.S3ListAction) error {
 		})
 	}
 
-	action.Result = objects
-	action.ActionStatus = "CompletedActionStatus"
-	action.EndTime = time.Now().Format(time.RFC3339)
+	action.Properties["result"] = objects
+
+	semantic.SetSuccessOnAction(action)
 	return c.JSON(http.StatusOK, action)
 }
 
@@ -289,33 +311,4 @@ func createS3Client(ctx context.Context, endpoint, region, accessKey, secretKey 
 		o.BaseEndpoint = aws.String(endpoint)
 		o.UsePathStyle = true
 	}), nil
-}
-
-// returnError is a helper to return error responses with proper action status
-func returnError(c echo.Context, action interface{}, message string) error {
-	// Set error on the action based on type
-	switch v := action.(type) {
-	case *semantic.S3UploadAction:
-		v.ActionStatus = "FailedActionStatus"
-		v.Error = &semantic.PropertyValue{Type: "PropertyValue", Name: "error", Value: message}
-		v.EndTime = time.Now().Format(time.RFC3339)
-		return c.JSON(http.StatusInternalServerError, v)
-	case *semantic.S3DownloadAction:
-		v.ActionStatus = "FailedActionStatus"
-		v.Error = &semantic.PropertyValue{Type: "PropertyValue", Name: "error", Value: message}
-		v.EndTime = time.Now().Format(time.RFC3339)
-		return c.JSON(http.StatusInternalServerError, v)
-	case *semantic.S3DeleteAction:
-		v.ActionStatus = "FailedActionStatus"
-		v.Error = &semantic.PropertyValue{Type: "PropertyValue", Name: "error", Value: message}
-		v.EndTime = time.Now().Format(time.RFC3339)
-		return c.JSON(http.StatusInternalServerError, v)
-	case *semantic.S3ListAction:
-		v.ActionStatus = "FailedActionStatus"
-		v.Error = &semantic.PropertyValue{Type: "PropertyValue", Name: "error", Value: message}
-		v.EndTime = time.Now().Format(time.RFC3339)
-		return c.JSON(http.StatusInternalServerError, v)
-	default:
-		return echo.NewHTTPError(http.StatusInternalServerError, message)
-	}
 }

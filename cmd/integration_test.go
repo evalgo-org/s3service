@@ -96,21 +96,16 @@ func TestIntegration_UploadFile(t *testing.T) {
 	}
 	defer func() { _ = os.Remove(testFile) }()
 
-	// Create S3UploadAction
-	action := semantic.S3UploadAction{
-		Context:    "https://schema.org",
-		Type:       "CreateAction",
-		Identifier: "test-upload-integration",
-		Name:       "Integration Test Upload",
-		Object: &semantic.S3Object{
+	// Create SemanticAction for upload
+	action := semantic.NewSemanticS3UploadAction("test-upload-integration", "Integration Test Upload",
+		&semantic.S3Object{
 			Type:           "MediaObject",
 			Identifier:     "test/integration-upload.txt",
 			ContentUrl:     testFile,
 			EncodingFormat: "text/plain",
 		},
-		Target:    semantic.NewS3Bucket(testBucket, testURL, "fsn1", testAccessKey, testSecretKey),
-		TargetUrl: "test/integration-upload.txt",
-	}
+		semantic.NewS3Bucket(testBucket, testURL, "fsn1", testAccessKey, testSecretKey),
+		"test/integration-upload.txt")
 
 	// Marshal to JSON
 	payload, err := json.Marshal(action)
@@ -130,7 +125,7 @@ func TestIntegration_UploadFile(t *testing.T) {
 	}
 
 	// Parse response
-	var result semantic.S3UploadAction
+	var result semantic.SemanticAction
 	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -139,8 +134,8 @@ func TestIntegration_UploadFile(t *testing.T) {
 		t.Errorf("Expected CompletedActionStatus, got %s", result.ActionStatus)
 	}
 
-	if result.Result == nil {
-		t.Error("Expected result object, got nil")
+	if result.Properties["result"] == nil {
+		t.Error("Expected result in properties, got nil")
 	}
 
 	t.Logf("✓ Upload test passed - uploaded to s3://%s/test/integration-upload.txt", testBucket)
@@ -152,15 +147,9 @@ func TestIntegration_ListObjects(t *testing.T) {
 	setupTestServer()
 	defer teardownTestServer()
 
-	// Create S3ListAction
-	action := semantic.S3ListAction{
-		Context:    "https://schema.org",
-		Type:       "SearchAction",
-		Identifier: "test-list-integration",
-		Name:       "Integration Test List",
-		Query:      "test/",
-		Target:     semantic.NewS3Bucket(testBucket, testURL, "fsn1", testAccessKey, testSecretKey),
-	}
+	// Create SemanticAction for list
+	action := semantic.NewSemanticS3ListAction("test-list-integration", "Integration Test List", "test/",
+		semantic.NewS3Bucket(testBucket, testURL, "fsn1", testAccessKey, testSecretKey))
 
 	// Marshal to JSON
 	payload, err := json.Marshal(action)
@@ -180,7 +169,7 @@ func TestIntegration_ListObjects(t *testing.T) {
 	}
 
 	// Parse response
-	var result semantic.S3ListAction
+	var result semantic.SemanticAction
 	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -189,9 +178,19 @@ func TestIntegration_ListObjects(t *testing.T) {
 		t.Errorf("Expected CompletedActionStatus, got %s", result.ActionStatus)
 	}
 
-	t.Logf("✓ List test passed - found %d objects with prefix 'test/'", len(result.Result))
-	for i, obj := range result.Result {
-		t.Logf("  [%d] %s (%d bytes)", i+1, obj.Identifier, obj.ContentSize)
+	// Access result from properties
+	resultData, ok := result.Properties["result"].([]interface{})
+	if !ok {
+		resultData = []interface{}{}
+	}
+
+	t.Logf("✓ List test passed - found %d objects with prefix 'test/'", len(resultData))
+	for i, obj := range resultData {
+		if objMap, ok := obj.(map[string]interface{}); ok {
+			identifier := objMap["identifier"]
+			contentSize := objMap["contentSize"]
+			t.Logf("  [%d] %v (%v bytes)", i+1, identifier, contentSize)
+		}
 	}
 }
 
@@ -205,20 +204,15 @@ func TestIntegration_DownloadFile(t *testing.T) {
 	downloadPath := "/tmp/s3service-test-download.txt"
 	defer func() { _ = os.Remove(downloadPath) }()
 
-	// Create S3DownloadAction
-	action := semantic.S3DownloadAction{
-		Context:    "https://schema.org",
-		Type:       "DownloadAction",
-		Identifier: "test-download-integration",
-		Name:       "Integration Test Download",
-		Object: &semantic.S3Object{
+	// Create SemanticAction for download
+	action := semantic.NewSemanticS3DownloadAction("test-download-integration", "Integration Test Download",
+		&semantic.S3Object{
 			Type:           "MediaObject",
 			Identifier:     "test/integration-upload.txt",
 			ContentUrl:     downloadPath,
 			EncodingFormat: "text/plain",
 		},
-		Target: semantic.NewS3Bucket(testBucket, testURL, "fsn1", testAccessKey, testSecretKey),
-	}
+		semantic.NewS3Bucket(testBucket, testURL, "fsn1", testAccessKey, testSecretKey))
 
 	// Marshal to JSON
 	payload, err := json.Marshal(action)
@@ -238,7 +232,7 @@ func TestIntegration_DownloadFile(t *testing.T) {
 	}
 
 	// Parse response
-	var result semantic.S3DownloadAction
+	var result semantic.SemanticAction
 	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -272,18 +266,13 @@ func TestIntegration_DeleteFile(t *testing.T) {
 	setupTestServer()
 	defer teardownTestServer()
 
-	// Create S3DeleteAction
-	action := semantic.S3DeleteAction{
-		Context:    "https://schema.org",
-		Type:       "DeleteAction",
-		Identifier: "test-delete-integration",
-		Name:       "Integration Test Delete",
-		Object: &semantic.S3Object{
+	// Create SemanticAction for delete
+	action := semantic.NewSemanticS3DeleteAction("test-delete-integration", "Integration Test Delete",
+		&semantic.S3Object{
 			Type:       "MediaObject",
 			Identifier: "test/integration-upload.txt",
 		},
-		Target: semantic.NewS3Bucket(testBucket, testURL, "fsn1", testAccessKey, testSecretKey),
-	}
+		semantic.NewS3Bucket(testBucket, testURL, "fsn1", testAccessKey, testSecretKey))
 
 	// Marshal to JSON
 	payload, err := json.Marshal(action)
@@ -303,7 +292,7 @@ func TestIntegration_DeleteFile(t *testing.T) {
 	}
 
 	// Parse response
-	var result semantic.S3DeleteAction
+	var result semantic.SemanticAction
 	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -339,15 +328,15 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 
 	// Step 2: Upload
 	t.Log("Step 1: Uploading file...")
-	uploadAction := semantic.NewS3UploadAction("test-workflow-upload", "Workflow Upload",
+	uploadAction := semantic.NewSemanticS3UploadAction("test-workflow-upload", "Workflow Upload",
 		&semantic.S3Object{
 			Type:           "MediaObject",
 			Identifier:     testKey,
 			ContentUrl:     testFile,
 			EncodingFormat: "text/plain",
 		},
-		semantic.NewS3Bucket(testBucket, testURL, "fsn1", testAccessKey, testSecretKey))
-	uploadAction.TargetUrl = testKey
+		semantic.NewS3Bucket(testBucket, testURL, "fsn1", testAccessKey, testSecretKey),
+		testKey)
 
 	if err := executeAction(t, testEcho, uploadAction); err != nil {
 		t.Fatalf("Upload failed: %v", err)
@@ -356,7 +345,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 
 	// Step 3: List
 	t.Log("Step 2: Listing objects...")
-	listAction := semantic.NewS3ListAction("test-workflow-list", "Workflow List", "test/workflow-",
+	listAction := semantic.NewSemanticS3ListAction("test-workflow-list", "Workflow List", "test/workflow-",
 		semantic.NewS3Bucket(testBucket, testURL, "fsn1", testAccessKey, testSecretKey))
 
 	if err := executeAction(t, testEcho, listAction); err != nil {
@@ -366,7 +355,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 
 	// Step 4: Download
 	t.Log("Step 3: Downloading file...")
-	downloadAction := semantic.NewS3DownloadAction("test-workflow-download", "Workflow Download",
+	downloadAction := semantic.NewSemanticS3DownloadAction("test-workflow-download", "Workflow Download",
 		&semantic.S3Object{
 			Type:       "MediaObject",
 			Identifier: testKey,
@@ -390,7 +379,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 
 	// Step 5: Delete
 	t.Log("Step 4: Deleting file...")
-	deleteAction := semantic.NewS3DeleteAction("test-workflow-delete", "Workflow Delete",
+	deleteAction := semantic.NewSemanticS3DeleteAction("test-workflow-delete", "Workflow Delete",
 		&semantic.S3Object{Type: "MediaObject", Identifier: testKey},
 		semantic.NewS3Bucket(testBucket, testURL, "fsn1", testAccessKey, testSecretKey))
 
