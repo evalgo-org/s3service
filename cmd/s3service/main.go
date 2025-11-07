@@ -36,7 +36,7 @@ func main() {
 		Description: "S3-compatible object storage with support for AWS S3, Hetzner, and others",
 		Version:     "v1",
 		Port:        8092,
-		Capabilities: []string{"object-storage", "s3", "semantic-actions"},
+		Capabilities: []string{"object-storage", "s3", "semantic-actions", "state-tracking"},
 		Endpoints: []evehttp.EndpointDoc{
 			{
 				Method:      "POST",
@@ -82,7 +82,7 @@ func main() {
 		Directory:    "/home/opunix/s3service",
 		Binary:       "s3service",
 		Version:      "v1",
-		Capabilities: []string{"object-storage", "s3", "semantic-actions"},
+		Capabilities: []string{"object-storage", "s3", "semantic-actions", "state-tracking"},
 		APIVersions: []registry.APIVersion{
 			{
 				Version:       "v1",
