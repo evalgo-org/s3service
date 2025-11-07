@@ -41,7 +41,32 @@ func main() {
 			{
 				Method:      "POST",
 				Path:        "/v1/api/semantic/action",
-				Description: "Execute S3 operations via semantic actions",
+				Description: "Execute S3 operations via semantic actions (primary interface)",
+			},
+			{
+				Method:      "POST",
+				Path:        "/v1/api/objects",
+				Description: "Upload object (REST convenience - converts to CreateAction)",
+			},
+			{
+				Method:      "GET",
+				Path:        "/v1/api/objects/:key",
+				Description: "Download object (REST convenience - converts to SearchAction)",
+			},
+			{
+				Method:      "DELETE",
+				Path:        "/v1/api/objects/:key",
+				Description: "Delete object (REST convenience - converts to DeleteAction)",
+			},
+			{
+				Method:      "GET",
+				Path:        "/v1/api/buckets",
+				Description: "List buckets (REST convenience - converts to SearchAction)",
+			},
+			{
+				Method:      "POST",
+				Path:        "/v1/api/buckets",
+				Description: "Create bucket (REST convenience - converts to CreateAction)",
 			},
 			{
 				Method:      "GET",
@@ -61,10 +86,15 @@ func main() {
 	apiGroup := e.Group("/v1/api")
 	sm.RegisterRoutes(apiGroup)
 
-	// EVE API Key middleware
+	// API Key middleware
 	apiKey := os.Getenv("S3_API_KEY")
 	apiKeyMiddleware := evehttp.APIKeyMiddleware(apiKey)
-	e.POST("/v1/api/semantic/action", handleSemanticAction, apiKeyMiddleware)
+
+	// Semantic action endpoint (primary interface)
+	apiGroup.POST("/semantic/action", handleSemanticAction, apiKeyMiddleware)
+
+	// REST endpoints (convenience adapters that convert to semantic actions)
+	registerRESTEndpoints(apiGroup, apiKeyMiddleware)
 
 	// Start server
 	port := os.Getenv("PORT")
