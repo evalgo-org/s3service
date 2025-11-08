@@ -32,24 +32,9 @@ func handleSemanticAction(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Failed to parse action: %v", err))
 	}
 
-	// Route to appropriate handler based on @type + object type
-	// S3 operations work with MediaObject (files/objects)
-	switch action.Type {
-	case "CreateAction":
-		// CreateAction + MediaObject = upload file
-		return executeUploadAction(c, action)
-	case "DownloadAction":
-		// DownloadAction + MediaObject = download file
-		return executeDownloadAction(c, action)
-	case "DeleteAction":
-		// DeleteAction + MediaObject = delete file
-		return executeDeleteAction(c, action)
-	case "SearchAction":
-		// SearchAction + MediaObject = list objects
-		return executeListAction(c, action)
-	default:
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Unsupported action type: %s", action.Type))
-	}
+	// Dispatch to registered handler using the ActionRegistry
+	// No switch statement needed - handlers are registered at startup
+	return semantic.Handle(c, action)
 }
 
 // executeUploadAction handles file upload to S3 operations
