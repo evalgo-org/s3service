@@ -6,7 +6,7 @@
 *.dylib
 
 # Go build artifacts
-s3service
+/s3service
 /cmd/s3service/s3service
 *.test
 *.out
