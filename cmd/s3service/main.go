@@ -124,13 +124,20 @@ func main() {
 		port = "8092"
 	}
 
-	// Auto-register with registry service if REGISTRYSERVICE_API_URL is set
+	// Get service URL from environment (for Docker container names) or default to localhost
 	portInt, _ := strconv.Atoi(port)
+	serviceURL := os.Getenv("S3_SERVICE_URL")
+	if serviceURL == "" {
+		serviceURL = fmt.Sprintf("http://localhost:%d", portInt)
+	}
+
+	// Auto-register with registry service if REGISTRYSERVICE_API_URL is set
 	if _, err := registry.AutoRegister(registry.AutoRegisterConfig{
 		ServiceID:    "s3service",
 		ServiceName:  "S3 Object Storage Service",
 		Description:  "S3-compatible object storage with support for AWS S3, Hetzner, and others",
 		Port:         portInt,
+		ServiceURL:   serviceURL,
 		Directory:    "/home/opunix/s3service",
 		Binary:       "s3service",
 		Version:      "v1",
@@ -138,8 +145,8 @@ func main() {
 		APIVersions: []registry.APIVersion{
 			{
 				Version:       "v1",
-				URL:           fmt.Sprintf("http://localhost:%d/v1", portInt),
-				Documentation: fmt.Sprintf("http://localhost:%d/v1/api/docs", portInt),
+				URL:           fmt.Sprintf("%s/v1", serviceURL),
+				Documentation: fmt.Sprintf("%s/v1/api/docs", serviceURL),
 				IsDefault:     true,
 				Status:        "stable",
 				ReleaseDate:   "2024-01-01",
