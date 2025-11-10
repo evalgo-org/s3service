@@ -3,7 +3,7 @@ module s3service.evalgo.org
 go 1.25.3
 
 require (
-	eve.evalgo.org v0.0.44
+	eve.evalgo.org v0.0.48
 	github.com/aws/aws-sdk-go-v2 v1.39.6
 	github.com/aws/aws-sdk-go-v2/config v1.31.17
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.21
