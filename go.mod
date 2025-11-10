@@ -3,7 +3,7 @@ module s3service.evalgo.org
 go 1.25.3
 
 require (
-	eve.evalgo.org v0.0.36
+	eve.evalgo.org v0.0.38
 	github.com/aws/aws-sdk-go-v2 v1.39.6
 	github.com/aws/aws-sdk-go-v2/config v1.31.17
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.21
@@ -85,3 +85,5 @@ require (
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )
+
+replace eve.evalgo.org => /home/opunix/eve

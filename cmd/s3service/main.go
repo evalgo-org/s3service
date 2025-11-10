@@ -53,12 +53,13 @@ func main() {
 
 	// Documentation endpoint
 	e.GET("/v1/api/docs", evehttp.DocumentationHandler(evehttp.ServiceDocConfig{
-		ServiceID:    "s3service",
-		ServiceName:  "S3 Object Storage Service",
-		Description:  "S3-compatible object storage with support for AWS S3, Hetzner, and others",
-		Version:      "v1",
-		Port:         8092,
-		Capabilities: []string{"object-storage", "s3", "semantic-actions", "state-tracking"},
+		ServiceID:           "s3service",
+		ServiceName:         "S3 Object Storage Service",
+		Description:         "S3-compatible object storage with support for AWS S3, Hetzner, and others",
+		Version:             "v1",
+		Port:                8092,
+		IncludeDependencies: true,
+		Capabilities:        []string{"object-storage", "s3", "semantic-actions", "state-tracking"},
 		Endpoints: []evehttp.EndpointDoc{
 			{
 				Method:      "POST",

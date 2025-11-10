@@ -38,7 +38,7 @@ func handleSemanticAction(c echo.Context) error {
 }
 
 // executeUploadAction handles file upload to S3 operations
-func executeUploadAction(c echo.Context, action *semantic.SemanticAction) error {
+func executeUploadActionImpl(c echo.Context, action *semantic.SemanticAction) error {
 	ctx := context.Background()
 
 	// Extract S3 bucket and object using helpers
@@ -82,16 +82,18 @@ func executeUploadAction(c echo.Context, action *semantic.SemanticAction) error 
 	// Get file info for result
 	fileInfo, err := os.Stat(filePath)
 	if err == nil {
-		result := &semantic.S3Object{
-			Type:           "MediaObject",
-			Identifier:     s3Key,
-			Name:           filepath.Base(filePath),
-			ContentUrl:     fmt.Sprintf("s3://%s/%s", bucketName, s3Key),
-			ContentSize:    fileInfo.Size(),
-			EncodingFormat: object.EncodingFormat,
-			UploadDate:     time.Now().Format(time.RFC3339),
+		// Use semantic Result structure
+		action.Result = &semantic.SemanticResult{
+			Type:   "DigitalDocument",
+			Format: object.EncodingFormat,
+			Value: map[string]interface{}{
+				"contentUrl":     fmt.Sprintf("s3://%s/%s", bucketName, s3Key),
+				"name":           filepath.Base(filePath),
+				"contentSize":    fileInfo.Size(),
+				"encodingFormat": object.EncodingFormat,
+				"uploadDate":     time.Now().Format(time.RFC3339),
+			},
 		}
-		action.Properties["result"] = result
 	}
 
 	semantic.SetSuccessOnAction(action)
@@ -99,7 +101,7 @@ func executeUploadAction(c echo.Context, action *semantic.SemanticAction) error 
 }
 
 // executeDownloadAction handles file download from S3 operations
-func executeDownloadAction(c echo.Context, action *semantic.SemanticAction) error {
+func executeDownloadActionImpl(c echo.Context, action *semantic.SemanticAction) error {
 	ctx := context.Background()
 
 	// Extract S3 bucket and object using helpers
@@ -163,23 +165,24 @@ func executeDownloadAction(c echo.Context, action *semantic.SemanticAction) erro
 		return semantic.ReturnActionError(c, action, "Failed to write file", err)
 	}
 
-	// Set result
-	downloadedObject := &semantic.S3Object{
-		Type:           "MediaObject",
-		Identifier:     s3Key,
-		Name:           filepath.Base(s3Key),
-		ContentUrl:     downloadPath,
-		ContentSize:    size,
-		EncodingFormat: object.EncodingFormat,
+	// Use semantic Result structure
+	action.Result = &semantic.SemanticResult{
+		Type:   "DigitalDocument",
+		Format: object.EncodingFormat,
+		Value: map[string]interface{}{
+			"contentUrl":     downloadPath,
+			"name":           filepath.Base(s3Key),
+			"contentSize":    size,
+			"encodingFormat": object.EncodingFormat,
+		},
 	}
-	action.Properties["result"] = downloadedObject
 
 	semantic.SetSuccessOnAction(action)
 	return c.JSON(http.StatusOK, action)
 }
 
 // executeDeleteAction handles file deletion from S3 operations
-func executeDeleteAction(c echo.Context, action *semantic.SemanticAction) error {
+func executeDeleteActionImpl(c echo.Context, action *semantic.SemanticAction) error {
 	ctx := context.Background()
 
 	// Extract S3 bucket and object using helpers
@@ -229,7 +232,7 @@ func executeDeleteAction(c echo.Context, action *semantic.SemanticAction) error 
 }
 
 // executeListAction handles listing objects in S3 bucket
-func executeListAction(c echo.Context, action *semantic.SemanticAction) error {
+func executeListActionImpl(c echo.Context, action *semantic.SemanticAction) error {
 	ctx := context.Background()
 
 	// Extract S3 bucket using helper
@@ -265,19 +268,23 @@ func executeListAction(c echo.Context, action *semantic.SemanticAction) error {
 	}
 
 	// Build result list
-	objects := make([]*semantic.S3Object, 0, len(result.Contents))
+	objects := make([]interface{}, 0, len(result.Contents))
 	for _, obj := range result.Contents {
-		objects = append(objects, &semantic.S3Object{
-			Type:        "MediaObject",
-			Identifier:  *obj.Key,
-			Name:        filepath.Base(*obj.Key),
-			ContentUrl:  fmt.Sprintf("s3://%s/%s", bucketName, *obj.Key),
-			ContentSize: *obj.Size,
-			UploadDate:  obj.LastModified.Format(time.RFC3339),
+		objects = append(objects, map[string]interface{}{
+			"contentUrl":     fmt.Sprintf("s3://%s/%s", bucketName, *obj.Key),
+			"name":           filepath.Base(*obj.Key),
+			"contentSize":    *obj.Size,
+			"encodingFormat": "application/octet-stream",
+			"uploadDate":     obj.LastModified.Format(time.RFC3339),
 		})
 	}
 
-	action.Properties["result"] = objects
+	// Use semantic Result structure for list results
+	action.Result = &semantic.SemanticResult{
+		Type:   "Dataset",
+		Format: "application/json",
+		Value:  objects,
+	}
 
 	semantic.SetSuccessOnAction(action)
 	return c.JSON(http.StatusOK, action)
@@ -301,4 +308,40 @@ func createS3Client(ctx context.Context, endpoint, region, accessKey, secretKey 
 		o.BaseEndpoint = aws.String(endpoint)
 		o.UsePathStyle = true
 	}), nil
+}
+
+// executeUploadAction wraps the implementation to match ActionHandler signature
+func executeUploadAction(c echo.Context, actionInterface interface{}) error {
+	action, ok := actionInterface.(*semantic.SemanticAction)
+	if !ok {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid action type")
+	}
+	return executeUploadActionImpl(c, action)
+}
+
+// executeDownloadAction wraps the implementation to match ActionHandler signature
+func executeDownloadAction(c echo.Context, actionInterface interface{}) error {
+	action, ok := actionInterface.(*semantic.SemanticAction)
+	if !ok {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid action type")
+	}
+	return executeDownloadActionImpl(c, action)
+}
+
+// executeDeleteAction wraps the implementation to match ActionHandler signature
+func executeDeleteAction(c echo.Context, actionInterface interface{}) error {
+	action, ok := actionInterface.(*semantic.SemanticAction)
+	if !ok {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid action type")
+	}
+	return executeDeleteActionImpl(c, action)
+}
+
+// executeListAction wraps the implementation to match ActionHandler signature
+func executeListAction(c echo.Context, actionInterface interface{}) error {
+	action, ok := actionInterface.(*semantic.SemanticAction)
+	if !ok {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid action type")
+	}
+	return executeListActionImpl(c, action)
 }
